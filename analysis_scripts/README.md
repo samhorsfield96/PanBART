@@ -256,6 +256,8 @@ Key arguments:
 | `--save_matrix` | No | False | Also save the plotted matrix as `.npy` |
 | `--global_contig_breaks` | No | False | Attend globally to contig breaks |
 | `--device` | No | auto | Device to run on (e.g. `cpu`, `cuda`) |
+| `--DDP` | No | False | Run the model through DistributedDataParallel (single process, single device) |
+| `--port` | No | 12356 | Port used for DDP |
 | `--seed` | No | 42 | Seed (used when a genome is longer than `--max_seq_length` and a random slice is taken) |
 | `--dpi` | No | 300 | Figure resolution |
 | `--outpref` | No | attention | Output file prefix |

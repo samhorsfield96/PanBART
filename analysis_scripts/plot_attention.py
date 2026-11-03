@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
+import os
 import random
 import numpy as np
 import pandas as pd
@@ -14,6 +15,9 @@ import matplotlib.pyplot as plt
 from tokenizers import Tokenizer
 from transformers import LEDConfig, LEDForConditionalGeneration, logging
 from torch.utils.data import DataLoader
+
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from panBART import GenomeDataset
 
@@ -45,6 +49,8 @@ def parse_args():
     parser.add_argument("--attention_window", type=int, default=512)
     parser.add_argument("--global_contig_breaks", action="store_true", default=False, help="Attend globally to contig breaks.")
     parser.add_argument("--device", type=str, default=None, help="Device (e.g. 'cpu', 'cuda', 'mps'). Default = auto.")
+    parser.add_argument("--DDP", action="store_true", default=False, help="Run the model through DistributedDataParallel (single process, single device).")
+    parser.add_argument("--port", type=str, default="12356", help="Port for DDP. Default = 12356")
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
@@ -127,7 +133,15 @@ def main():
     checkpoint = torch.load(args.model_path, map_location="cpu")
     state_dict = {k.removeprefix("module."): v for k, v in checkpoint["model_state_dict"].items()}
     model.load_state_dict(state_dict)
-    model.to(device).eval()
+    model.to(device)
+    if args.DDP:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = args.port
+        use_cuda = device.type == "cuda"
+        dist.init_process_group("nccl" if use_cuda else "gloo", rank=0, world_size=1)
+        device_ids = [device.index if device.index is not None else 0] if use_cuda else None
+        model = DDP(model, device_ids=device_ids, find_unused_parameters=True)
+    model.eval()
 
     genome_id, genome = read_prompt_file(args.prompt_file, args.genome_id)
 
@@ -226,6 +240,8 @@ def main():
     if args.save_matrix:
         np.save(stem + ".npy", matrix)
         print(f"Saved {stem}.npy")
+    if args.DDP:
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
