@@ -3,6 +3,8 @@
 
 PanBART is a pangenome long-context encoder-decoder attention based-architecture using the [LED](https://huggingface.co/docs/transformers/model_doc/led) transfomer architecture.
 
+Pre-trained models for E. coli and S. pneumoniae can be found [here](https://zenodo.org/records/19823911).
+
 ## Generating input data
 
 To generate input data, use [WTBCluster](https://github.com/samhorsfield96/WTBcluster). This will generate data in the ```tokenized_genomes``` directory.
