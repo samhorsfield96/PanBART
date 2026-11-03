@@ -217,6 +217,51 @@ Key arguments:
 
 ---
 
+### plot_attention.py
+
+Pass a single genome through a trained panBART model and plot an attention matrix as a heatmap (PNG). The attention between every pair of tokens is also written to a CSV (rows = query tokens, columns = key tokens, labelled `position:token`). The CSV always covers the full sequence; `--start`/`--end` only crop the plot. Note the CSV is a dense square matrix and can be very large for long sequences.
+
+```
+python plot_attention.py \
+  --model_path model.chk \
+  --tokenizer_path tokenizer.json \
+  --prompt_file /path/to/genomes.txt \
+  --genome_id genome1 \
+  --attention_type encoder \
+  --layer -1 \
+  --embed_dim 256 \
+  --num_heads 8 \
+  --num_layers 8 \
+  --max_seq_length 8192 \
+  --attention_window 512 \
+  --outpref attention
+```
+
+Output files are named `<outpref>_<genome_id>_<attention_type>_layer<N>_<head>.png` / `.csv` (`<head>` is `head<i>` or `meanheads`).
+
+Key arguments:
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `--model_path` | Yes | — | Path to model checkpoint |
+| `--tokenizer_path` | Yes | — | Path to tokenizer JSON file |
+| `--prompt_file` | Yes | — | Tab-separated file of genome IDs and genomes |
+| `--genome_id` | No | first genome | Genome ID to plot |
+| `--attention_type` | No | encoder | `encoder` (self), `decoder` (self) or `cross` (decoder to encoder) attention |
+| `--layer` | No | -1 | Layer to plot (negative values count from the last layer) |
+| `--head` | No | mean of heads | Attention head to plot |
+| `--start` / `--end` | No | 0 / end | Token position range shown in the plot |
+| `--log_scale` | No | False | Log colour scale |
+| `--label_tokens` | No | False | Label axes with tokens (best for short ranges) |
+| `--save_matrix` | No | False | Also save the plotted matrix as `.npy` |
+| `--global_contig_breaks` | No | False | Attend globally to contig breaks |
+| `--device` | No | auto | Device to run on (e.g. `cpu`, `cuda`) |
+| `--seed` | No | 42 | Seed (used when a genome is longer than `--max_seq_length` and a random slice is taken) |
+| `--dpi` | No | 300 | Figure resolution |
+| `--outpref` | No | attention | Output file prefix |
+
+---
+
 ### prompt_model.py
 
 Generate genome sequences using trained panBART model through prompting. Accepts partial genome sequences as prompts and completes them using the trained model, with options for different sampling strategies and sequence randomization.
