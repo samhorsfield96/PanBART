@@ -36,6 +36,8 @@ def parse_args():
     parser.add_argument("--head", type=int, default=None, help="Head to plot. Default = mean over heads.")
     parser.add_argument("--start", type=int, default=0, help="First token position to plot. Default = 0")
     parser.add_argument("--end", type=int, default=None, help="Last token position (exclusive) to plot. Default = end of sequence.")
+    parser.add_argument("--locus", type=int, default=None, help="Token position in the genome. Writes a table of attention weights from and to this locus, flagging outliers.")
+    parser.add_argument("--outlier_dev", default=3.0, type=float, help="Proportion of IQR away to identify attention outliers. Default = 3.0")
     parser.add_argument("--log_scale", action="store_true", default=False, help="Plot attention on a log colour scale.")
     parser.add_argument("--label_tokens", action="store_true", default=False, help="Label axes with tokens (best for short windows).")
     parser.add_argument("--save_matrix", action="store_true", default=False, help="Also save the attention matrix as .npy")
@@ -100,6 +102,45 @@ def longformer_to_dense(local_attn, global_attn, global_idx, window):
         if global_attn is not None:
             dense[:, global_idx, :] = np.nan_to_num(global_attn)
     return dense
+
+
+def tukey_bounds(values, outlier_dev):
+    q1, q3 = np.percentile(values, [25, 75])
+    iqr = q3 - q1
+    return q1 - outlier_dev * iqr, q3 + outlier_dev * iqr
+
+
+def write_locus_table(matrix, row_ids, col_ids, tokenizer, locus, outlier_dev, stem):
+    """
+    Write attention weights for one locus: from the locus (its row, as query) to every
+    key token, and to the locus (its column, as key) from every query token. Tokens whose
+    attention is above Q3 + outlier_dev * IQR (Tukey's method, as in plot_SHAP) are flagged.
+    """
+    n_rows, n_cols = matrix.shape
+    if not (0 <= locus < n_rows and 0 <= locus < n_cols):
+        raise ValueError(f"--locus {locus} is outside the attention matrix ({n_rows} x {n_cols})")
+
+    n = max(n_rows, n_cols)
+    position = np.arange(n)
+    df = pd.DataFrame({"position": position})
+    for name, weights, ids in (
+        ("attention_from_locus", matrix[locus, :], col_ids),
+        ("attention_to_locus", matrix[:, locus], row_ids),
+    ):
+        # positions beyond this vector's length (cross attention) are left empty
+        col = np.full(n, np.nan)
+        col[:len(weights)] = weights
+        tokens = np.full(n, "", dtype=object)
+        tokens[:len(ids)] = [tokenizer.id_to_token(int(t)) for t in ids]
+        lower, upper = tukey_bounds(weights, outlier_dev)
+        df[name.replace("attention", "token")] = tokens
+        df[name] = col
+        df[name + "_outlier"] = col > upper
+        print(f"{name}: outlier bounds = ({lower:.6g}, {upper:.6g}); {int((weights > upper).sum())} high outliers")
+
+    df["is_locus"] = df["position"] == locus
+    df.to_csv(f"{stem}_locus{locus}_attention.csv", index=False, float_format="%.6g")
+    print(f"Saved {stem}_locus{locus}_attention.csv")
 
 
 def main():
@@ -230,6 +271,9 @@ def main():
     col_names = [f"{i}:{tokenizer.id_to_token(int(t))}" for i, t in enumerate(col_ids)]
     pd.DataFrame(matrix, index=row_names, columns=col_names).to_csv(stem + ".csv", float_format="%.6g")
     print(f"Saved {stem}.csv")
+
+    if args.locus is not None:
+        write_locus_table(matrix, row_ids, col_ids, tokenizer, args.locus, args.outlier_dev, stem)
 
     end_r = args.end if args.end is not None else matrix.shape[0]
     end_c = args.end if args.end is not None else matrix.shape[1]
