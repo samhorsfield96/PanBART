@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from panBART import GenomeDataset
+from panBART import setup, cleanup, GenomeDataset
 
 logging.set_verbosity_error()
 
@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument("--attention_window", type=int, default=512)
     parser.add_argument("--global_contig_breaks", action="store_true", default=False, help="Attend globally to contig breaks.")
     parser.add_argument("--device", type=str, default=None, help="Device (e.g. 'cpu', 'cuda', 'mps'). Default = auto.")
-    parser.add_argument("--DDP", action="store_true", default=False, help="Run the model through DistributedDataParallel (single process, single device).")
+    parser.add_argument("--DDP", action="store_true", default=False, help="Load/wrap the model with DistributedDataParallel (single process), as in compute_SHAP.py.")
     parser.add_argument("--port", type=str, default="12356", help="Port for DDP. Default = 12356")
     parser.add_argument("--seed", type=int, default=42)
 
@@ -130,18 +130,25 @@ def main():
         attention_window=args.attention_window,
     )
     model = LEDForConditionalGeneration(config)
-    checkpoint = torch.load(args.model_path, map_location="cpu")
-    state_dict = {k.removeprefix("module."): v for k, v in checkpoint["model_state_dict"].items()}
-    model.load_state_dict(state_dict)
     model.to(device)
     if args.DDP:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = args.port
-        use_cuda = device.type == "cuda"
-        dist.init_process_group("nccl" if use_cuda else "gloo", rank=0, world_size=1)
-        device_ids = [device.index if device.index is not None else 0] if use_cuda else None
-        model = DDP(model, device_ids=device_ids, find_unused_parameters=True)
+        # Same setup as compute_SHAP.py: wrap in DDP (single process) before loading the checkpoint
+        rank = device.index if device.index is not None else 0
+        setup(rank, 1, args.port)
+        model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+        map_location = {"cuda:0": f"cuda:{rank}"}
+        dist.barrier()
+    else:
+        map_location = "cpu"
+    checkpoint = torch.load(args.model_path, map_location=map_location)
+    state_dict = checkpoint["model_state_dict"]
+    if not args.DDP:
+        state_dict = {k.removeprefix("module."): v for k, v in state_dict.items()}
+    model.load_state_dict(state_dict)
     model.eval()
+    # DDP's forward clones every output tensor (all layers' attentions), causing CUDA OOM;
+    # run the forward pass through the wrapped module instead.
+    forward_model = model.module if args.DDP else model
 
     genome_id, genome = read_prompt_file(args.prompt_file, args.genome_id)
 
@@ -154,7 +161,7 @@ def main():
     decoder_mask, encoder_mask, global_mask = decoder_mask.to(device), encoder_mask.to(device), global_mask.to(device)
 
     with torch.no_grad():
-        output = model(
+        output = forward_model(
             input_ids=encoder_input,
             attention_mask=encoder_mask,
             decoder_input_ids=decoder_input,
@@ -241,7 +248,7 @@ def main():
         np.save(stem + ".npy", matrix)
         print(f"Saved {stem}.npy")
     if args.DDP:
-        dist.destroy_process_group()
+        cleanup()
 
 
 if __name__ == "__main__":
