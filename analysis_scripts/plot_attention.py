@@ -278,6 +278,7 @@ def main():
 
     if args.token is not None:
         for tok in [t.strip() for t in args.token.split(",") if t.strip()]:
+            stem += f"_token_{tok}"
             tok_id = tokenizer.token_to_id(tok)
             if tok_id is None:
                 print(f"Warning: token '{tok}' not in tokeniser vocabulary, skipping.")
