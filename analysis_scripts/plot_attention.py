@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument("--start", type=int, default=0, help="First token position to plot. Default = 0")
     parser.add_argument("--end", type=int, default=None, help="Last token position (exclusive) to plot. Default = end of sequence.")
     parser.add_argument("--locus", type=int, default=None, help="Token position in the genome. Writes a table of attention weights from and to this locus, flagging outliers.")
+    parser.add_argument("--token", type=str, default=None, help="Token (as in the tokeniser vocabulary) or comma separated list of tokens. Writes a locus attention table for every position where each token occurs.")
     parser.add_argument("--outlier_dev", default=3.0, type=float, help="Proportion of IQR away to identify attention outliers. Default = 3.0")
     parser.add_argument("--log_scale", action="store_true", default=False, help="Plot attention on a log colour scale.")
     parser.add_argument("--label_tokens", action="store_true", default=False, help="Label axes with tokens (best for short windows).")
@@ -274,6 +275,22 @@ def main():
 
     if args.locus is not None:
         write_locus_table(matrix, row_ids, col_ids, tokenizer, args.locus, args.outlier_dev, stem)
+
+    if args.token is not None:
+        for tok in [t.strip() for t in args.token.split(",") if t.strip()]:
+            tok_id = tokenizer.token_to_id(tok)
+            if tok_id is None:
+                print(f"Warning: token '{tok}' not in tokeniser vocabulary, skipping.")
+                continue
+            positions = sorted({int(i) for i in np.flatnonzero(row_ids == tok_id)} |
+                               {int(i) for i in np.flatnonzero(col_ids == tok_id)})
+            positions = [i for i in positions if i < min(matrix.shape)]
+            if not positions:
+                print(f"Warning: token '{tok}' not found in this sequence, skipping.")
+                continue
+            print(f"Token '{tok}' found at positions: {positions}")
+            for pos in positions:
+                write_locus_table(matrix, row_ids, col_ids, tokenizer, pos, args.outlier_dev, stem)
 
     end_r = args.end if args.end is not None else matrix.shape[0]
     end_c = args.end if args.end is not None else matrix.shape[1]
