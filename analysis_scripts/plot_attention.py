@@ -137,6 +137,14 @@ def write_locus_table(matrix, row_ids, col_ids, tokenizer, locus, outlier_dev, s
         df[name.replace("attention", "token")] = tokens
         df[name] = col
         df[name + "_outlier"] = col > upper
+        # outlier bounds recomputed from non-zero weights only (e.g. excludes positions outside the attention window)
+        nonzero = weights[weights > 0]
+        if nonzero.size:
+            _, upper_nz = tukey_bounds(nonzero, outlier_dev)
+        else:
+            upper_nz = np.inf
+        df[name + "_outlier_nonzero"] = col > upper_nz
+        print(f"{name}: non-zero outlier upper bound = {upper_nz:.6g}; {int((weights > upper_nz).sum())} high outliers")
         print(f"{name}: outlier bounds = ({lower:.6g}, {upper:.6g}); {int((weights > upper).sum())} high outliers")
 
     df["is_locus"] = df["position"] == locus
