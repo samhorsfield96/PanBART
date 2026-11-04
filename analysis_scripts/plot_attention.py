@@ -114,6 +114,8 @@ def main():
     else:
         device = torch.device("cpu")
 
+    DDP_active = args.DDP
+
     tokenizer = Tokenizer.from_file(args.tokenizer_path)
     config = LEDConfig(
         vocab_size=tokenizer.get_vocab_size(),
@@ -129,26 +131,41 @@ def main():
         dropout=args.model_dropout_rate,
         attention_window=args.attention_window,
     )
+
+    # DDP runs as a single process on a single device (rank 0, world_size 1)
+    rank = 0
+    world_size = 1
+    if DDP_active:
+        if not torch.cuda.is_available():
+            raise RuntimeError("--DDP requires a CUDA GPU (nccl backend).")
+        if device.type != "cuda":
+            device = torch.device("cuda")
+        if device.index is None:
+            device = torch.device("cuda", 0)
+        print("Using DDP on {}".format(device))
+        setup(rank, world_size, args.port)
+
     model = LEDForConditionalGeneration(config)
-    model.to(device)
-    if args.DDP:
-        # Same setup as compute_SHAP.py: wrap in DDP (single process) before loading the checkpoint
-        rank = device.index if device.index is not None else 0
-        setup(rank, 1, args.port)
-        model = DDP(model, device_ids=[rank], find_unused_parameters=True)
-        map_location = {"cuda:0": f"cuda:{rank}"}
+    model = model.to(device)
+    if DDP_active:
+        model = DDP(model, device_ids=[device.index], find_unused_parameters=True)
+        map_location = {"cuda:0": "cuda:%d" % device.index}
         dist.barrier()
     else:
         map_location = "cpu"
+
     checkpoint = torch.load(args.model_path, map_location=map_location)
     state_dict = checkpoint["model_state_dict"]
-    if not args.DDP:
+    if not DDP_active:
         state_dict = {k.removeprefix("module."): v for k, v in state_dict.items()}
+    elif not any(k.startswith("module.") for k in state_dict):
+        state_dict = {"module." + k: v for k, v in state_dict.items()}
     model.load_state_dict(state_dict)
+
     model.eval()
     # DDP's forward clones every output tensor (all layers' attentions), causing CUDA OOM;
     # run the forward pass through the wrapped module instead.
-    forward_model = model.module if args.DDP else model
+    forward_model = model.module if DDP_active else model
 
     genome_id, genome = read_prompt_file(args.prompt_file, args.genome_id)
 
