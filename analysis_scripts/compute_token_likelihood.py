@@ -543,7 +543,7 @@ def main():
             f.write(f"{gene_id}\t{str(token_for)}\t{str(token_rev)}\n")
 
     return_list = []
-    gene_list = None
+    gene_list = []
     if DDP_active:
         #prompt_list = split_prompts(prompt_list, world_size)
         with Manager() as manager:
