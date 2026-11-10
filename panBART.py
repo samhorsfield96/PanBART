@@ -47,7 +47,8 @@ def setup(rank, world_size, port):
     os.environ['MASTER_PORT'] = port
 
     # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    backend = "nccl" if torch.cuda.is_available() else "gloo"
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
 def cleanup():
     dist.destroy_process_group()

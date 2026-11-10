@@ -67,24 +67,30 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
         shuffle = False
         num_workers=1
     
+    print("Loading model...")
     # load model
     model = LEDForConditionalGeneration(BARTlongformer_config)
-    device = rank
+    use_cuda = torch.cuda.is_available()
+    device = rank if (use_cuda or not DDP_active) else torch.device("cpu")
     model = model.to(device)
     if DDP_active:
-        model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+        model = DDP(model, device_ids=[rank] if use_cuda else None, find_unused_parameters=True)
 
     map_location = None
-    if DDP_active:
+    if DDP_active and use_cuda:
         map_location = {'cuda:%d' % 0: 'cuda:%d' % rank}
+    if DDP_active:
         dist.barrier()
     
+    if not use_cuda and map_location is None:
+        map_location = "cpu"
     if map_location != None:
         checkpoint = torch.load(model_path, map_location=map_location)
     else:
         checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint["model_state_dict"])
     
+    print("Model loaded.")
     # generate both sets of embeddings
     if args.prompt_embeddings == None:
         # reset sampler
@@ -106,12 +112,15 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
     X_train = prompt_list_df.iloc[:, 1:].values  # Features (N-dimensional embeddings)
     y_train = np.array(cluster_assignments)   # Labels
 
+    print("Training classifier...")
+
     # Train the classifier
     # train for different values of k
     n_neighbors_list = [int(k) for k in args.n_neighbors.split(",")]
     per_k_accuracy = []
     for n_neighbors in n_neighbors_list:
         try:
+            print(f"K={n_neighbors}")
             knn = KNeighborsClassifier(n_neighbors=n_neighbors)
             knn.fit(X_train, y_train)
 
@@ -207,6 +216,8 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
 
                 # Save to TSV
                 per_label_df.to_csv(args.outpref + f"_k_{n_neighbors}_per_label_accuracy.tsv", sep='\t', index=False)
+                print(f"Finished K={n_neighbors}")
+
         except Exception as error:
             print(f"Failed to train at K={n_neighbors}")
             print("Error here:", error)
@@ -217,6 +228,7 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
 
     # Save to TSV
     per_k_df.to_csv(args.outpref + "_overall_accuracy.tsv", sep='\t', index=False)
+    print("Saved output.")
 
 def main():
     args = parse_args_script()
@@ -259,11 +271,13 @@ def main():
         else:
             print("GPU not available, using cpu.")
             device = torch.device("cpu")
+            world_size = 1
     else:
         if world_size > 0 and device != "cpu":
             device = torch.device("cuda:{}".format(device))
         else:
             device = torch.device("cpu")
+            world_size = 1
 
     genome_labels = []
     cluster_assignments = []

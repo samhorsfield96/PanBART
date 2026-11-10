@@ -196,7 +196,8 @@ def read_prompt_file(file_path, genome_labels=None):
                     #print(f"Match: {genome_id} {label}")
                     order_list[label_idx] = (genome_idx, label, genome_id)
                     break
-        
+        # remove None values
+        order_list = [x for x in order_list if x != None]
         reordered_prompt_list = []
         reordered_genome_id_list = []
         for genome_idx, label, genome_id in order_list:
