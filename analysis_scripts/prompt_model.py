@@ -443,7 +443,7 @@ def main():
         query_model(device, args.model_path, 1, args, BARTlongformer_config, tokenizer, prompt_list, DDP_active, args.encoder_only, prompt_list_truth, return_list)
     
     with open(args.outpref + "_seq.txt", "w") as f1, open(args.outpref + "_acc.txt", "w") as f2:
-        f2.write("Prop_masked\tTemperature\tIndex\Jaccard_distance\tBreakpoint_distance\n")
+        f2.write("Prop_masked\tTemperature\tIndex\tJaccard_distance\tBreakpoint_distance\n")
         for index, (jdist, break_dist, seq) in enumerate(return_list):
             f1.write(">" + str(index) + " jaccard_distance: " + str(jdist) + " breakpoint_distance: " + str(break_dist) + "\n" + str(seq) + "\n")
             f2.write(str(args.prop_masked) + "\t" + str(args.temperature) + "\t" + str(index) + "\t" + str(jdist) + "\t" + str(break_dist) + "\n")
