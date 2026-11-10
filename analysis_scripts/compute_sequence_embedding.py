@@ -197,6 +197,15 @@ def read_prompt_file(file_path, genome_labels=None):
                     order_list[label_idx] = (genome_idx, label, genome_id)
                     break
         # remove None values
+        # report rather than silently shrink the cohort: a header row or trailing
+        # whitespace in --labels makes every name fail to match, and dropping the
+        # Nones then yields embeddings for a subset with nothing saying so
+        _unmatched = [genome_labels[i] for i, x in enumerate(order_list) if x is None]
+        if _unmatched:
+            print("WARNING: %d of %d labels in --labels matched no genome ID and were "
+                  "dropped, e.g. %s. Check for a header row or trailing whitespace."
+                  % (len(_unmatched), len(genome_labels), _unmatched[:5]),
+                  file=sys.stderr)
         order_list = [x for x in order_list if x != None]
         reordered_prompt_list = []
         reordered_genome_id_list = []
