@@ -302,7 +302,7 @@ def main():
         else:
             device = torch.device("cpu")
 
-    genome_labels = []
+    genome_labels = None
     if args.labels != None:
         with open(args.labels, "r") as i:
             i.readline()
