@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument("--encoder_only", default=False, action="store_true", help="Prompt using encoder input only.")
     parser.add_argument("--randomise", default=False, action="store_true", help="Randomise sequence for upon input.")
     parser.add_argument("--global_contig_breaks", default=False, action="store_true", help="Attend globally to contig breaks. Default is local only.")
-    parser.add_argument("--pooling", choices=['mean', 'max'], help="Pooling for embedding generation. Defaualt = 'mean'.")
+    parser.add_argument("--pooling", choices=['mean', 'max'], default='mean', help="Pooling for embedding generation. Default = 'mean'.")
     parser.add_argument("--ignore_unknown", default=False, action="store_true", help="Ignore unknown tokens during calculations.")
     parser.add_argument("--port", default="12356", type=str, help="GPU port for DDP. Default=12356")
 
