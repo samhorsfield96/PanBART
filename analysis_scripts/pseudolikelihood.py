@@ -283,7 +283,11 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
     log_pseudolikelihood_list, gene_dict = calculate_pseudolikelihood(model, tokenizer, loader, device, args.max_seq_length, encoder_only, args.per_gene, args.ignore_unknown)
     
     return_list.extend(log_pseudolikelihood_list)
-    gene_list.append(gene_dict)
+    # gene_list is None whenever --per_gene was not requested (set at line 357 and only
+    # replaced under `if args.per_gene`), so collecting is conditional. Appending
+    # unconditionally raises AttributeError after the whole genome loop has run.
+    if gene_list is not None:
+        gene_list.append(gene_dict)
 
         
 def main():
