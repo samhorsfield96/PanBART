@@ -143,12 +143,23 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
 
             if args.query_labels != None:
                 # parse real data labels
-                query_cluster_assignments = []
+                label_to_cluster = []
                 with open(args.query_labels, "r") as i:
                     i.readline()
                     for line in i:
                         split_line = line.rstrip().split(",")
-                        query_cluster_assignments.append(split_line[1])
+                        label_to_cluster.append((split_line[0], split_line[1]))
+                # keep only labels for queries that were actually matched/embedded, in embedding order
+                query_cluster_assignments = []
+                for query_id in query_list_df.iloc[:, 0].astype(str):
+                    for label, cluster in label_to_cluster:
+                        if has_exact_match(query_id, label):
+                            query_cluster_assignments.append(cluster)
+                            break
+                    else:
+                        raise ValueError(f"No label found in {args.query_labels} for query {query_id}")
+                if len(label_to_cluster) != len(query_cluster_assignments):
+                    print(f"Warning: {len(label_to_cluster)} labels but only {len(query_cluster_assignments)} queries embedded; evaluating on embedded queries only.", file=sys.stderr)
                 y_test = np.array(query_cluster_assignments)
                 unique_labels = np.unique(y_test)
                 # Per-class accuracy
