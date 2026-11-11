@@ -55,43 +55,47 @@ def get_embeddings(input_list, tokenizer, model, labels, shuffle, num_workers, p
     return list_df
 
 def query_model(rank, model_path, world_size, args, BARTlongformer_config, tokenizer, prompt_list, genome_labels, cluster_assignments, DDP_active, encoder_only, query_prompt_list, query_genome_labels):
-    if DDP_active:
-        setup(rank, world_size, args.port)
-        #prompt_list = prompt_list[rank]
-        num_workers = 0
-        pin_memory = False
-        shuffle = False
-    else:
-        sampler = None
-        pin_memory = True
-        shuffle = False
-        num_workers=1
-    
-    print("Loading model...")
-    # load model
-    model = LEDForConditionalGeneration(BARTlongformer_config)
-    use_cuda = torch.cuda.is_available()
-    device = rank if (use_cuda or not DDP_active) else torch.device("cpu")
-    model = model.to(device)
-    if DDP_active:
-        model = DDP(model, device_ids=[rank] if use_cuda else None, find_unused_parameters=True)
 
-    map_location = None
-    if DDP_active and use_cuda:
-        map_location = {'cuda:%d' % 0: 'cuda:%d' % rank}
-    if DDP_active:
-        dist.barrier()
-    
-    if not use_cuda and map_location is None:
-        map_location = "cpu"
-    if map_location != None:
-        checkpoint = torch.load(model_path, map_location=map_location)
-    else:
-        checkpoint = torch.load(model_path)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    
-    print("Model loaded.")
-    # generate both sets of embeddings
+    # only load model if need to generate embeddings
+    if args.prompt_embeddings == None or args.query_embeddings == None:
+        if DDP_active:
+            setup(rank, world_size, args.port)
+            #prompt_list = prompt_list[rank]
+            num_workers = 0
+            pin_memory = False
+            shuffle = False
+        else:
+            sampler = None
+            pin_memory = True
+            shuffle = False
+            num_workers=1
+        
+        print("Loading model...", file=sys.stderr)
+        # load model
+        model = LEDForConditionalGeneration(BARTlongformer_config)
+        use_cuda = torch.cuda.is_available()
+        device = rank if (use_cuda or not DDP_active) else torch.device("cpu")
+        model = model.to(device)
+        if DDP_active:
+            model = DDP(model, device_ids=[rank] if use_cuda else None, find_unused_parameters=True)
+
+        map_location = None
+        if DDP_active and use_cuda:
+            map_location = {'cuda:%d' % 0: 'cuda:%d' % rank}
+        if DDP_active:
+            dist.barrier()
+        
+        if not use_cuda and map_location is None:
+            map_location = "cpu"
+        if map_location != None:
+            checkpoint = torch.load(model_path, map_location=map_location)
+        else:
+            checkpoint = torch.load(model_path)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        
+        print("Model loaded.", file=sys.stderr)
+
+    # generate/load both sets of embeddings
     if args.prompt_embeddings == None:
         # reset sampler
         if DDP_active:
@@ -99,6 +103,8 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
         prompt_list_df = get_embeddings(prompt_list, tokenizer, model, genome_labels, shuffle, num_workers, pin_memory, sampler, device, encoder_only, "_prompt", args)
     else:
         prompt_list_df = pd.read_csv(args.prompt_embeddings, header=None, index_col=False)
+
+    print("Training embeddings loaded.", file=sys.stderr)
     
     if args.query_embeddings == None:
         # reset sampler
@@ -107,12 +113,14 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
         query_list_df = get_embeddings(query_prompt_list, tokenizer, model, query_genome_labels, shuffle, num_workers, pin_memory, sampler, device, encoder_only, "_query", args)
     else:
         query_list_df = pd.read_csv(args.query_embeddings, header=None, index_col=False)
+
+    print("Query embeddings loaded.", file=sys.stderr)
     
     # add known labels and use k-NN to generate labels for unknown
     X_train = prompt_list_df.iloc[:, 1:].values  # Features (N-dimensional embeddings)
     y_train = np.array(cluster_assignments)   # Labels
 
-    print("Training classifier...")
+    print("Training classifier...", file=sys.stderr)
 
     # Train the classifier
     # train for different values of k
@@ -120,7 +128,7 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
     per_k_accuracy = []
     for n_neighbors in n_neighbors_list:
         try:
-            print(f"K={n_neighbors}")
+            print(f"K={n_neighbors}", file=sys.stderr)
             knn = KNeighborsClassifier(n_neighbors=n_neighbors)
             knn.fit(X_train, y_train)
 
@@ -219,8 +227,8 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
                 print(f"Finished K={n_neighbors}")
 
         except Exception as error:
-            print(f"Failed to train at K={n_neighbors}")
-            print("Error here:", error)
+            print(f"Failed to train at K={n_neighbors}", file=sys.stderr)
+            print("Error here:", error, file=sys.stderr)
             continue
     
     # Convert to DataFrame
@@ -228,7 +236,7 @@ def query_model(rank, model_path, world_size, args, BARTlongformer_config, token
 
     # Save to TSV
     per_k_df.to_csv(args.outpref + "_overall_accuracy.tsv", sep='\t', index=False)
-    print("Saved output.")
+    print("Saved output.", file=sys.stderr)
 
 def main():
     args = parse_args_script()
