@@ -308,26 +308,30 @@ def main():
             genome_labels.append(genome_name)
             cluster_assignments.append(split_line[1])
 
-    # parse prompt file and additional query files for assignment to clusters
-    prompt_list, genome_labels = read_prompt_file(args.prompt_file, genome_labels)
+    # only read prompt/query files if their embeddings need to be generated
+    prompt_list = []
+    query_prompt_list = []
+    query_genome_labels = []
 
-    # need to reorder queries if labels present
-    if args.query_labels != None:
-        
-        query_genome_labels = []
-        with open(args.query_labels, "r") as i:
-            i.readline()
-            for line in i:
-                split_line = line.rstrip().split(",")
-                genome_name = split_line[0]
-                query_genome_labels.append(genome_name)
+    if args.prompt_embeddings == None:
+        prompt_list, genome_labels = read_prompt_file(args.prompt_file, genome_labels)
 
-        query_prompt_list, query_genome_labels = read_prompt_file(args.query_file, query_genome_labels)
-    else:
-        query_prompt_list, query_genome_labels = read_prompt_file(args.query_file)
+    if args.query_embeddings == None:
+        # need to reorder queries if labels present
+        if args.query_labels != None:
+            query_genome_labels = []
+            with open(args.query_labels, "r") as i:
+                i.readline()
+                for line in i:
+                    split_line = line.rstrip().split(",")
+                    query_genome_labels.append(split_line[0])
+
+            query_prompt_list, query_genome_labels = read_prompt_file(args.query_file, query_genome_labels)
+        else:
+            query_prompt_list, query_genome_labels = read_prompt_file(args.query_file)
 
     # randomise
-    if args.randomise:
+    if args.randomise and args.prompt_embeddings == None:
         prompt_list = [genome.split() for genome in prompt_list]
         for genome in prompt_list:
             random.shuffle(genome)
@@ -335,28 +339,28 @@ def main():
 
     # remove sequences that are too long or short
     if args.max_input_len != None:
-        # for prompt_list
-        list_index = [i for i, genome in enumerate(prompt_list) if len(genome.split()) <= args.max_input_len]
-        prompt_list = [prompt_list[i] for i in list_index]
-        genome_labels = [genome_labels[i] for i in list_index]
-        cluster_assignments = [cluster_assignments[i] for i in list_index]
+        if args.prompt_embeddings == None:
+            list_index = [i for i, genome in enumerate(prompt_list) if len(genome.split()) <= args.max_input_len]
+            prompt_list = [prompt_list[i] for i in list_index]
+            genome_labels = [genome_labels[i] for i in list_index]
+            cluster_assignments = [cluster_assignments[i] for i in list_index]
 
-        # for query_list
-        list_index = [i for i, genome in enumerate(query_prompt_list) if len(genome.split()) <= args.max_input_len]
-        query_prompt_list = [query_prompt_list[i] for i in list_index]
-        query_genome_labels = [query_genome_labels[i] for i in list_index]
+        if args.query_embeddings == None:
+            list_index = [i for i, genome in enumerate(query_prompt_list) if len(genome.split()) <= args.max_input_len]
+            query_prompt_list = [query_prompt_list[i] for i in list_index]
+            query_genome_labels = [query_genome_labels[i] for i in list_index]
 
     if args.min_input_len != None:
-        # for prompt_list
-        list_index = [i for i, genome in enumerate(prompt_list) if len(genome.split()) <= args.max_input_len]
-        prompt_list = [prompt_list[i] for i in list_index]
-        genome_labels = [genome_labels[i] for i in list_index]
-        cluster_assignments = [cluster_assignments[i] for i in list_index]
+        if args.prompt_embeddings == None:
+            list_index = [i for i, genome in enumerate(prompt_list) if len(genome.split()) >= args.min_input_len]
+            prompt_list = [prompt_list[i] for i in list_index]
+            genome_labels = [genome_labels[i] for i in list_index]
+            cluster_assignments = [cluster_assignments[i] for i in list_index]
 
-        # for query_list
-        list_index = [i for i, genome in enumerate(query_prompt_list) if len(genome.split()) <= args.max_input_len]
-        query_prompt_list = [query_prompt_list[i] for i in list_index]
-        query_genome_labels = [query_genome_labels[i] for i in list_index]
+        if args.query_embeddings == None:
+            list_index = [i for i, genome in enumerate(query_prompt_list) if len(genome.split()) >= args.min_input_len]
+            query_prompt_list = [query_prompt_list[i] for i in list_index]
+            query_genome_labels = [query_genome_labels[i] for i in list_index]
 
     return_list = []
     if DDP_active:
