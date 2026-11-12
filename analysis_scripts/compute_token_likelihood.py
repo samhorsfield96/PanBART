@@ -29,6 +29,9 @@ from compute_SHAP import calculate_SHAP
 logging.set_verbosity_error()
 
 def insert_tensor(tensor, value_tensor, insert_pos):
+    # flatten so an (N, 1) query tensor assigns into the 1-D destination slice below;
+    # numel() is unchanged, so N == 1 behaviour is byte-identical
+    value_tensor = value_tensor.reshape(-1)
     num_insertions = value_tensor.numel()
     # shift values down
     #print(tensor[0, insert_pos], file=sys.stderr)
@@ -543,7 +546,7 @@ def main():
             f.write(f"{gene_id}\t{str(token_for)}\t{str(token_rev)}\n")
 
     return_list = []
-    gene_list = None
+    gene_list = []
     if DDP_active:
         #prompt_list = split_prompts(prompt_list, world_size)
         with Manager() as manager:

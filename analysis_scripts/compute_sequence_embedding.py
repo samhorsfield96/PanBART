@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument("--encoder_only", default=False, action="store_true", help="Prompt using encoder input only.")
     parser.add_argument("--randomise", default=False, action="store_true", help="Randomise sequence for upon input.")
     parser.add_argument("--global_contig_breaks", default=False, action="store_true", help="Attend globally to contig breaks. Default is local only.")
-    parser.add_argument("--pooling", choices=['mean', 'max'], help="Pooling for embedding generation. Defaualt = 'mean'.")
+    parser.add_argument("--pooling", choices=['mean', 'max'], default='mean', help="Pooling for embedding generation. Default = 'mean'.")
     parser.add_argument("--ignore_unknown", default=False, action="store_true", help="Ignore unknown tokens during calculations.")
     parser.add_argument("--port", default="12356", type=str, help="GPU port for DDP. Default=12356")
 
@@ -197,6 +197,15 @@ def read_prompt_file(file_path, genome_labels=None):
                     order_list[label_idx] = (genome_idx, label, genome_id)
                     break
         # remove None values
+        # report rather than silently shrink the cohort: a header row or trailing
+        # whitespace in --labels makes every name fail to match, and dropping the
+        # Nones then yields embeddings for a subset with nothing saying so
+        _unmatched = [genome_labels[i] for i, x in enumerate(order_list) if x is None]
+        if _unmatched:
+            print("WARNING: %d of %d labels in --labels matched no genome ID and were "
+                  "dropped, e.g. %s. Check for a header row or trailing whitespace."
+                  % (len(_unmatched), len(genome_labels), _unmatched[:5]),
+                  file=sys.stderr)
         order_list = [x for x in order_list if x != None]
         reordered_prompt_list = []
         reordered_genome_id_list = []
@@ -302,7 +311,7 @@ def main():
         else:
             device = torch.device("cpu")
 
-    genome_labels = []
+    genome_labels = None
     if args.labels != None:
         with open(args.labels, "r") as i:
             i.readline()
